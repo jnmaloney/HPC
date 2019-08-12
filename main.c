@@ -14,6 +14,7 @@ void findMinDominatingSet();
 
 typedef struct Set Set;
 typedef struct MultiSet MultiSet;
+typedef struct Problem Problem;
 
 struct Set
 {
@@ -31,16 +32,15 @@ struct MultiSet
 };
 
 
-MultiSet T;
-int N = 0;
-Set covering;
-Set coveringCopy;
+struct Problem
+{
+  MultiSet* T; // Problem sets
+  Set* cover; // elements included in our set cover
+  int U; // size of Universe
+  double k;
+  int valid;
+};
 
-void setGraphSize(int N);
-void addNeighbourhood(int a, int b);
-void cleanT(MultiSet* T);
-int largestSet(MultiSet* T);
-MultiSet* copy(MultiSet* T);
 
 // Erase all elements in s from each set T
 void removeVertexAll(Set* s, MultiSet* T);
@@ -48,129 +48,334 @@ void removeVertexAll(Set* s, MultiSet* T);
 // Remove set i from T
 void removeSet(int s_i, MultiSet* T);
 
+Problem* create_first_problem();
+void split_subproblem(Problem* p, int x, Problem** a, Problem** b);
+double problem_k_value(Problem* p);
+double alpha(int si);
+double beta(int fi);
+Set* empty_set();
+void remove_vertex_all(MultiSet* T, int i);
+void remove_set(MultiSet* T, int i);
+void add_element(Set** set, int element);
+int largest_set(MultiSet* T);
+void measure_and_conquer(Problem* p);
+int largestSet(MultiSet* T);
+MultiSet* copy(MultiSet* T);
+
+void solve_problem(Problem* p);
+
+
+MultiSet T;
+int N = 0;
+int g_leastN;
+Set covering;
+Set coveringCopy;
+
+
+Set* empty_set()
+{
+  Set* s = malloc(sizeof(Set));
+  memset(s, 0, sizeof(Set));
+  s->element = malloc(N * sizeof(int));
+  memset(s->element, 0, N * sizeof(int));
+  return s;
+}
+
+
+void remove_vertex_all(MultiSet* T, int i)
+{
+  removeVertexAll(T->set[i], T);
+}
+
+
+void remove_set(MultiSet* T, int i)
+{
+  removeSet(i, T);
+}
+
+
+void add_element(Set** set, int element)
+{
+  //printf("add_element\n");
+
+  if ((*set)->element[element] == 0)
+  {
+    ++(*set)->n;
+  }
+
+  (*set)->element[element] = 1;
+}
+
+
+Problem* create_first_problem()
+{
+  Problem* p = malloc(sizeof(Problem));
+  p->T = copy(&T); // global var
+  p->cover = empty_set();
+  p->U = N; // global var
+  p->valid = 0;
+  problem_k_value(p);
+}
+
+
+Set* copy_set(Set* a)
+{
+  Set* b = malloc(sizeof(Set));
+  b->element = malloc(N * sizeof(int));
+  memcpy(b->element, a->element, N * sizeof(int));
+  b->n = a->n;
+  return b;
+}
+
+
+void split_subproblem(Problem* p, int x, Problem** a, Problem** b)
+{
+  *a = malloc(sizeof(Problem));
+  *b = malloc(sizeof(Problem));
+
+  // a includes S_x
+  (*a)->T = copy(p->T);
+  //(*a)->cover = empty_set();
+  int u0 = p->T->set[x]->n;
+  remove_vertex_all((*a)->T, x);
+  remove_set((*a)->T, x);
+  // //(*a)->cover = p->cover;
+  (*a)->cover = copy_set(p->cover);
+  add_element(&((*a)->cover), x);
+  (*a)->U = p->U - u0;
+  (*a)->valid = 0;
+  problem_k_value(*a);
+  //printf("Creating A problem\n");
+  //printf("a = %i, b = %i\n", a, b);
+
+  // b excludes S_x
+  (*b)->T = copy(p->T);
+  //(*b)->cover = empty_set();
+  // printf("Copy T\n");
+  remove_set((*b)->T, x);
+  // printf("rs\n");
+  // //(*b)->cover = p->cover;
+  (*b)->cover = copy_set(p->cover);
+  (*b)->U = p->U;
+  (*b)->valid = 0;
+  problem_k_value(*b);
+  //printf("Creating B problem\n");
+}
+
+
+double alpha(int si)
+{
+  if (si > 6) si = 6;
+  double a[] = {0., 0., 0.377443, 0.754886, 0.909444, 0.976388, 1.};
+  return a[si];
+}
+
+
+double beta(int fi)
+{
+  if (fi > 6) fi = 6;
+  double b[] = {0., 0., 0.399418, 0.767579, 0.929850, 0.985614, 0.98232};
+  return b[fi];
+}
+
+
+double problem_k_value(Problem* p)
+{
+  double k = 0.;
+
+  // Frequency elements
+  for (int i = 0; i < N; ++i)
+  {
+    int fi = p->T->frequency[i];
+    k += beta(fi);
+  }
+
+  // Size elements
+  for (int i = 0; i < N; ++i)
+  {
+    int si = 0.;
+    if (p->T->set[i])
+    {
+      si = p->T->set[i]->n;
+    }
+    k += alpha(si);
+  }
+
+  p->k = k;
+}
+
+
+void measure_and_conquer(Problem* p)
+{
+  // //  Find x
+  // //x = largest_set(p);
+  //
+  // // Generate sub problems
+  // Problem a;
+
+}
+
+
+void print_problem(Problem* p)
+{
+  if (p->valid)
+    printf("  Problem, |U| = %i, [VALID]\n", p->U);
+  else
+    printf("  Problem, |U| = %i\n", p->U);
+  printf("MultiSet\n");
+  for (int i = 0; i < N; ++i)
+  {
+    if (p->T->set[i])
+    {
+      for (int j = 0; j < N; ++j)
+      {
+        printf("%i ", p->T->set[i]->element[j]);
+      }
+      printf("\n");
+    }
+    else
+    {
+      printf("----\n");
+    }
+  }
+  printf("Frequency\n");
+  for (int i = 0; i < N; ++i)
+  {
+    printf("%i ", p->T->frequency[i]);
+  }
+  printf("\n");
+  printf("Covering\n");
+  for (int i = 0; i < N; ++i)
+  {
+    printf("%i ", p->cover->element[i]);
+  }
+  printf("\n");
+
+  printf("k = %f\n", p->k);
+}
+
+
+void solve_and_print()
+{
+  printf("Creating first problem\n");
+  Problem* p = create_first_problem();
+  //print_problem(p);
+
+  int n_spaces_in_queue = 12;
+  Problem* queue[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+  queue[0] = p;
+  --n_spaces_in_queue;
+
+  printf("Allocating queue\n");
+
+  //n_spaces_in_queue = 0; //HACK
+
+  // Do until queue is full
+  while (n_spaces_in_queue)
+  {
+    // Find largest k in the pool
+    double largest_k = -1.;
+    int target_problem = 0;
+    for (int i = 0; i < 12; ++i)
+    {
+      if (queue[i])
+      {
+        if (largest_k < 0 || largest_k < queue[i]->k)
+        {
+          largest_k = queue[i]->k;
+          target_problem = i;
+        }
+      }
+    }
+
+    // Target problem is found - now find splitting point x
+    int x = 0;
+
+    // x is largest set
+    int nmax = 0;
+    for (int i = 0; i < N; ++i)
+    {
+      if (queue[target_problem]->T->set[i])
+      {
+        if (nmax == 0)
+        {
+          nmax = queue[target_problem]->T->set[i]->n;
+          x = i;
+        }
+        else if (queue[target_problem]->T->set[i]->n > nmax)
+        {
+          nmax = queue[target_problem]->T->set[i]->n;
+          x = i;
+        }
+      }
+    }
+    if (nmax == 0)
+    {
+      //printf("No splitting point is defined!\n");
+
+      // exit the queue
+      n_spaces_in_queue = 0;
+      break;
+    }
+
+
+    // Split this into 2 subproblems
+    //printf("Splitting problem %i on element %i\n", target_problem, x);
+    Problem* a = 0;
+    Problem* b = 0;
+    split_subproblem(queue[target_problem], x, &a, &b);
+
+    // printf("Split problem %i (k=%f) into problem %i (k=%f) and problem %i (k=%f)\n",
+    //   target_problem, queue[target_problem]->k, target_problem, a->k, 12 - n_spaces_in_queue, b->k);
+    // print_problem(a);
+    // print_problem(b);
+
+    queue[target_problem] = a;
+    queue[12 - n_spaces_in_queue] = b;
+    --n_spaces_in_queue;
+  }
+
+  // Print problems
+  printf("Problems:\n");
+  for (int i = 0; i < 12; ++i)
+  {
+    if (queue[i])
+      printf("%i: \tk = %f\n", i, queue[i]->k);
+    else
+      printf("%i: ----\n", i);
+  }
+
+  // Solve queue
+  for (int i = 0; i < 12; ++i)
+  {
+    if (queue[i])
+      solve_problem(queue[i]);
+  }
+
+  // Print problems / solutions
+  printf("Problems:\n");
+  for (int i = 0; i < 12; ++i)
+  {
+    if (queue[i])
+      printf("%i: \tgamma = %i\tvalid = %i\n", i, queue[i]->cover->n, queue[i]->valid);
+    else
+      printf("%i: ----\n", i);
+  }
+}
+
+
+void setGraphSize(int N);
+void addNeighbourhood(int a, int b);
+void cleanT(MultiSet* T);
+
+
+
 // Init T ~ Sets of neighbours
 
 int minSet = 0;
 
 int findSubSet(MultiSet* T);
-
-
-// Minimum Covering Set
-int findMCS(MultiSet* T, int U, Set* covering)
-{
-  //printf("Entering findMCS!\n");
-
-  if (minSet < N && covering->n >= minSet) // TODO ? N
-    return 0;
-
-  int setsInT = T->n;
-
-  if (setsInT == 0)
-  {
-    //printf("returning with U = %d\n", U);
-    if (U == 0)
-    {
-      minSet = covering->n;
-      for (int i = 0; i < N; ++i)
-      {
-        coveringCopy.element[i] = covering->element[i];
-      }
-      //printf("Covering size %d \n", minSet);
-
-
-      return 0;
-    }
-    else
-      return 1001; // No (result is not a dominant set)
-  }
-
-  // Optimisation #1. (1-frequency)
-  for (int i = 0; i < N; ++i)
-  {
-    if (T->frequency[i] == 1)
-    {
-      // Find the set that contains v[i]
-      for (int j = 0; j < N; ++j)
-      {
-        if (T->set[j])
-        {
-          if (T->set[j]->element[i])
-          {
-            // S_j contains v_i, so take S_j
-            MultiSet* Tx = copy(T);
-            Set* s = T->set[j];
-            int s_n = s->n;
-            removeVertexAll(s, Tx);
-            removeSet(j, Tx);
-            s = 0;
-            //addToMCS(s);
-            Set covering2;
-            covering2.element = malloc(N * sizeof(int));
-            memcpy(covering2.element, covering->element, N * sizeof(int));
-            covering2.element[j] = 1;
-            covering2.n = covering->n + 1;
-            int Cx = s_n + findMCS(Tx, U - s_n, &covering2);
-            cleanT(Tx);
-            return Cx;
-          }
-        }
-      }
-    }
-  }
-
-  // Optimisation #2. #3.
-  int y = findSubSet(T);
-  if (y != -1)
-  {
-    MultiSet* Ty = copy(T);
-    removeSet(y, Ty);
-    int Cy = findMCS(Ty, U, covering);
-    cleanT(Ty);
-    return Cy;
-  }
-
-
-  // printf("Sets in T = %d\n", setsInT);
-
-  int s_i = largestSet(T);
-  // printf("Set found i = %d\n", s_i);
-  Set* s = T->set[s_i];
-
-  // printf("Largest cardinaity = %d\n", s->n);
-
-  // Find C1
-  MultiSet* T1 = copy(T);
-  removeVertexAll(s, T1);
-  removeSet(s_i, T1);
-  //addToMCS(s);
-  Set covering2;
-  covering2.element = malloc(N * sizeof(int));
-  for (int i = 0; i < N; ++i)
-  {
-    covering2.element[i] = covering->element[i];
-  }
-  covering2.element[s_i] = 1;
-  covering2.n = covering->n + 1;
-  int C1 = s->n + findMCS(T1, U - s->n, &covering2);
-  cleanT(T1);
-
-  // Find C2
-  MultiSet* T2 = copy(T);
-  removeSet(s_i, T2);
-  int C2 = findMCS(T2, U, covering);
-  cleanT(T2);
-
-  if (C1 < C2)
-  {
-    // index_out add s.i
-    // printf("add s_i = %d\n", s_i);
-    return C1;
-  }
-  else
-  {
-    return C2;
-  }
-}
 
 
 clock_t begin_time;
@@ -307,8 +512,10 @@ void readInFile(const char* filename)
 
 void findMinDominatingSet()
 {
+  solve_and_print();
+
   //dom_size =
-  findMCS(&T, N, &covering);
+  //findMCS(&T, N, &covering);
 }
 
 
@@ -366,6 +573,7 @@ void setGraphSize(int N)
 
 
   minSet = N;
+  g_leastN = N;
 }
 
 
@@ -416,28 +624,42 @@ int largestSet(MultiSet* T)
 
 MultiSet* copy(MultiSet* T0)
 {
+  //printf("copy 0\n");
   MultiSet* T1 = malloc(sizeof(MultiSet));
   T1->n = T0->n;
   T1->set = malloc(N * sizeof(void*));
+
+  //printf("copy 1\n");
 
   for (int i = 0; i < N; ++i)
   {
     if (T0->set[i])
     {
+      // printf("copy s %i / %i\n", i, N);
+      //
+      // printf("sizeof set %li\n", (long)T1);
+      // printf("sizeof set %li\n", (long)T1->set);
+      // printf("sizeof set %li\n", sizeof(Set));
+
       T1->set[i] = malloc(sizeof(Set));
+      //printf("x\n");
       T1->set[i]->element = malloc(N * sizeof(int));
+      //printf("y\n");
       T1->set[i]->n = T0->set[i]->n;
+      //printf("z\n");
 
       for (int j = 0; j < N; ++j)
       {
         T1->set[i]->element[j] = T0->set[i]->element[j];
       }
+
     }
     else
     {
       T1->set[i] = 0;
     }
   }
+  //printf("copy 2\n");
 
   T1->frequency = malloc(N * sizeof(int));
   memcpy(T1->frequency, T0->frequency, N * sizeof(int));
@@ -527,4 +749,121 @@ int findSubSet(MultiSet* T)
   }
 
   return -1;
+}
+
+
+void set_minset(Set* s)
+{
+  int leastN = g_leastN;
+  if (s->n < leastN)
+  {
+    // copy set to least set
+  }
+}
+
+
+void solve_problem(Problem* p)
+{
+  // Check search depth and set size
+  // ...
+
+  // ...
+  if (p->valid) return;
+
+  // Number of sets in T reaches 0
+  if (p->T->n == 0)
+  {
+    if (p->U == 0)
+    {
+      //set_minset(p->cover);
+      p->valid = 1; // useless?
+      return;
+    }
+    else
+      return; // No (result is not a dominant set)
+  }
+
+  // Optimisation #1. (single-frequency elements)
+  for (int i = 0; i < N; ++i)
+  {
+    if (p->T->frequency[i] == 1)
+    {
+      // Find the set that contains v[i]
+      for (int j = 0; j < N; ++j)
+      {
+        if (p->T->set[j])
+        {
+          if (p->T->set[j]->element[i])
+          {
+            // Assign in-place
+            // Set S_j is added to covering
+            if (p->cover->element[j] == 0)
+            {
+              p->cover->element[j] = 1;
+              ++p->cover->n;
+            }
+            int s_n = p->T->set[j]->n;
+            p->U -= s_n;
+            removeVertexAll(p->T->set[j], p->T);
+            removeSet(j, p->T);
+          }
+        }
+      }
+    }
+  }
+
+  // // Optimisation #2. #3.
+  // int y = findSubSet(p->T);
+  // while (y != -1)
+  // {
+  //   // Assign in-place
+  //   // Set S_y is a subset, so remove it
+  //   p->cover->element[y] = 0; // redundant
+  //   removeSet(y, p->T);
+  //
+  //   // Repeat
+  //   y = findSubSet(p->T);
+  // }
+
+  // Number of sets in T reaches 0 [repeat]
+  if (p->T->n == 0)
+  {
+    if (p->U == 0)
+    {
+      p->valid = 1; // useless?
+      return;
+    }
+    else
+      return; // No (result is not a dominant set)
+  }
+
+  int s_i = largestSet(p->T);
+
+  Problem* p1;
+  Problem* p2;
+  split_subproblem(p, s_i, &p1, &p2);
+
+  // Find C1
+  solve_problem(p1);
+  //cleanT(T1);
+
+  // Find C2
+  solve_problem(p2);
+  //cleanT(T2);
+
+  // Compare problems
+  int n1 = p1->valid ? p1->cover->n : N + p1->cover->n;
+  int n2 = p2->valid ? p2->cover->n : N + p2->cover->n;
+  // int n1 = p1->cover->n;
+  // int n2 = p2->cover->n;
+  if (n1 < n2)
+  {
+    p->cover->n = p1->cover->n;
+    p->valid = p1->valid;
+  }
+  else
+  {
+    p->cover->n = p2->cover->n;
+    p->valid = p2->valid;
+  }
 }
